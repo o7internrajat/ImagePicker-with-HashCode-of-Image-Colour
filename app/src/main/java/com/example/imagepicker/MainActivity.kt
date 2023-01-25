@@ -1,6 +1,9 @@
 package com.example.imagepicker
 
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -19,9 +22,11 @@ import android.view.MotionEvent.INVALID_POINTER_ID
 import android.view.ScaleGestureDetector
 import android.view.ScaleGestureDetector.OnScaleGestureListener
 import android.view.ScaleGestureDetector.SimpleOnScaleGestureListener
+import android.view.View
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import androidx.core.graphics.scaleMatrix
@@ -33,36 +38,36 @@ import kotlin.math.min
 
 class MainActivity : AppCompatActivity() {
 
-    lateinit var btnPicker:Button
-    lateinit var tvColorCode:TextView
-    lateinit var ivImage:ImageView
-    lateinit var tvColor:TextView
+    lateinit var btnPicker: Button
+    lateinit var tvColorCode: TextView
+    lateinit var ivImage: ImageView
+    lateinit var tvColor: TextView
     lateinit var bitmap: Bitmap
     lateinit var mScaleDetector: ScaleGestureDetector
+    lateinit var detector: GestureDetector
+    lateinit var clipboardManager: ClipboardManager
+
     var scaleFactor = 1.0f
     private var mActivePointerId = INVALID_POINTER_ID
-//    private val mCurrentViewport = RectF(AXIS_X_MIN, AXIS_Y_MIN, AXIS_X_MAX, AXIS_Y_MAX)
-    private val mContentRect: Rect?=null
-    private var mLastTouchX: Float=1.0f
-    private var mLastTouchY: Float=1.0f
-    private var mPosX=0.0f
-    private var mPosY=0.0f
+
+    //    private val mCurrentViewport = RectF(AXIS_X_MIN, AXIS_Y_MIN, AXIS_X_MAX, AXIS_Y_MAX)
+    private val mContentRect: Rect? = null
+    private var mLastTouchX: Float = 1.0f
+    private var mLastTouchY: Float = 1.0f
+    private var mPosX = 0.0f
+    private var mPosY = 0.0f
 
 
-
-
-
-
-
-    private  val gallery=registerForActivityResult(ActivityResultContracts.GetContent()){ uri:Uri? ->
-        uri?.let {
-            ivImage.setImageURI(uri)
+    private val gallery =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+            uri?.let {
+                ivImage.setImageURI(uri)
+            }
+            var latestUri: Uri? = null
+            val previewImage by lazy {
+                findViewById<ImageView>(R.id.ivImage)
+            }
         }
-        var latestUri: Uri?=null
-        val previewImage by lazy {
-            findViewById<ImageView>(R.id.ivImage)
-        }
-    }
 
     @SuppressLint("MissingInflatedId", "ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -70,106 +75,85 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
 
-        btnPicker=findViewById(R.id.btnPicker)
-        tvColor=findViewById(R.id.tvColor)
-        tvColorCode=findViewById(R.id.tvColorCode)
-        ivImage=findViewById(R.id.ivImage)
+        val actionBar = supportActionBar
+        actionBar!!.hide()
 
-//        mScaleDetector = GestureDetector(this,ScaleListener())
-        mScaleDetector = ScaleGestureDetector(this,ScaleListener())
+        btnPicker = findViewById(R.id.btnPicker)
+        tvColor = findViewById(R.id.tvColor)
+        tvColorCode = findViewById(R.id.tvColorCode)
+        ivImage = findViewById(R.id.ivImage)
+
+        var listner = View.OnTouchListener(function = { view, motionEvent ->
+            if (motionEvent.action == MotionEvent.ACTION_MOVE) {
+
+                view.x = motionEvent.rawX - view.height / 2
+                view.y = motionEvent.rawY - view.height / 2
+            }
+            true
+        })
+        ivImage.setOnTouchListener(listner)
+//        mScaleDetector = ScaleGestureDetector(this,ScaleListener())
+        mScaleDetector = ScaleGestureDetector(this, ScaleListener())
 
 
-        btnPicker.setOnClickListener{
+        btnPicker.setOnClickListener {
             selectImageFromGallery()
         }
 
-        ivImage.isDrawingCacheEnabled=true
+        ivImage.isDrawingCacheEnabled = true
         ivImage.buildDrawingCache(true)
 
 
+        clipboardManager= getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        tvColorCode.setOnClickListener{
+            val clipData= ClipData.newPlainText("Label",tvColorCode.text.toString())
+            clipboardManager.setPrimaryClip(clipData)
+            Toast.makeText(this,"Copy", Toast.LENGTH_SHORT).show()
+        }
 
 
-        ivImage.setOnTouchListener { _, event ->
+
+
+       ivImage.setOnTouchListener { _, event ->
             Log.e("AHAHHAHAHAH", event.toString())
-            if(event.action==MotionEvent.ACTION_DOWN){
-                bitmap=ivImage.drawingCache
-                val pixel=bitmap.getPixel(event.x.toInt(), event.y.toInt())
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                bitmap = ivImage.drawingCache
+                val pixel = bitmap.getPixel(event.x.toInt(), event.y.toInt())
                 val r = Color.red(pixel)
                 val g = Color.green(pixel)
                 val b = Color.blue(pixel)
 
-                tvColorCode.text="${Integer.toHexString(pixel)}"
-                tvColor.setBackgroundColor(Color.rgb(r,g,b))
+                tvColorCode.text = "${Integer.toHexString(pixel)}"
+                tvColor.setBackgroundColor(Color.rgb(r, g, b))
             }
 
             onTouchEvent(event)
 
-            true
+           true
         }
-    }
+   }
 
 
+    private fun selectImageFromGallery() = gallery.launch("image/*")
 
-    private fun selectImageFromGallery() =gallery.launch("image/*")
-
-    private fun getFileUri():Uri{
-        val file =File.createTempFile("image_file",".png",cacheDir).apply {
+    private fun getFileUri(): Uri {
+        val file = File.createTempFile("image_file", ".png", cacheDir).apply {
             createNewFile()
             deleteOnExit()
         }
-        return FileProvider.getUriForFile(applicationContext,"${BuildConfig.APPLICATION_ID}.provider",file)
+        return FileProvider.getUriForFile(
+            applicationContext,
+            "${BuildConfig.APPLICATION_ID}.provider",
+            file
+        )
     }
+
+
+
 
     override fun onTouchEvent(motionEvent: MotionEvent): Boolean {
-         mScaleDetector.onTouchEvent(motionEvent)
-
-//         val action =MotionEventCompat.getActionMasked(motionEvent)
-//        when(action){
-//            MotionEvent.ACTION_DOWN ->{
-//                MotionEventCompat.getActionIndex(motionEvent).also { pointerIndex->
-//                     mLastTouchX = MotionEventCompat.getX(motionEvent,pointerIndex)
-//                     mLastTouchY=MotionEventCompat.getY(motionEvent,pointerIndex)
-//                }
-//                mActivePointerId=MotionEventCompat.getPointerId(motionEvent,0)
-//            }
-//            MotionEvent.ACTION_MOVE ->{
-//                val (x:Float, y:Float)=
-//                    MotionEventCompat.findPointerIndex(motionEvent,mActivePointerId).let { pointerIndex->
-//                        MotionEventCompat.getX(motionEvent,pointerIndex) to
-//                                MotionEventCompat.getY(motionEvent,pointerIndex)
-//                    }
-//                mPosX += x-mLastTouchX
-//                mPosY += y-mLastTouchY
-//                invalidate()
-//                mLastTouchY = x
-//                mLastTouchY = y
-//            }
-//            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL->{
-//                mActivePointerId= INVALID_POINTER_ID
-//            }
-//            MotionEvent.ACTION_POINTER_UP ->{
-//                    MotionEventCompat.getActionIndex(motionEvent).also { pointerIndex->
-//                        MotionEventCompat.getPointerId(motionEvent,pointerIndex)
-//                            .takeIf { it==mActivePointerId }?.
-//                                run{
-//                                    val newPointerIndex=if(pointerIndex==0)1 else 0
-//                                    mLastTouchX=MotionEventCompat.getX(motionEvent,newPointerIndex)
-//                                    mLastTouchY=MotionEventCompat.getY(motionEvent,newPointerIndex)
-//                                    mActivePointerId=MotionEventCompat.getPointerId(motionEvent,newPointerIndex)
-//                                }
-//                    }
-//
-//            }
-//
-//        }
-
-
-
+        mScaleDetector.onTouchEvent(motionEvent)
         return true
-
-    }
-
-    private fun invalidate() {
 
     }
 
@@ -177,7 +161,6 @@ class MainActivity : AppCompatActivity() {
         override fun onScale(scaleGestureDetector: ScaleGestureDetector):Boolean {
             scaleFactor *= scaleGestureDetector.scaleFactor
             scaleFactor = max(0.1f, min(scaleFactor,10.0f))
-
             ivImage.scaleX = scaleFactor
             ivImage.scaleY = scaleFactor
             return true
